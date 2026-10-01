@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Barge-In Lab: when a voice agent acts on a sentence the caller already took back</title>
+<meta name="description" content="Interactive POC: what happens when a caller corrects themselves and the voice agent has already acted. Compare cascade, speed-tuned, and full-duplex pipelines.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Barge-In Lab: when a voice agent acts on a sentence the caller already took back">
+<meta property="og:description" content="Tune the pipeline, play the call, and see whether the $2,000 transfer goes to the right account.">
+<meta property="og:url" content="https://vasanthnatarajan7.github.io/barge-in-lab-poc/">
+<meta property="og:image" content="https://vasanthnatarajan7.github.io/barge-in-lab-poc/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6ECF1; --panel:#F4F7F9; --ink:#1B2A41; --muted:#5A6B80; --grid:#C3CDD8;
+  --caller:#2F7F86; --agent:#C4841A; --think:#6B5EA8; --bad:#B23A48; --good:#2E7D4F;
+  --focus:#1B6FD1;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141C27; --panel:#1C2635; --ink:#E4EAF1; --muted:#9AA9BB; --grid:#324157;
+    --caller:#4FB3BB; --agent:#E3A844; --think:#9D90DA; --bad:#E0697A; --good:#5DBB84; --focus:#6FA8F5;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141C27; --panel:#1C2635; --ink:#E4EAF1; --muted:#9AA9BB; --grid:#324157;
+  --caller:#4FB3BB; --agent:#E3A844; --think:#9D90DA; --bad:#E0697A; --good:#5DBB84; --focus:#6FA8F5;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 24px 64px}
+h1{font-stretch:112%;font-weight:800;font-size:clamp(28px,4.4vw,46px);line-height:1.08;margin:0 0 14px;max-width:22ch;letter-spacing:-.01em}
+.lede{max-width:64ch;color:var(--muted);margin:0 0 28px;font-size:17px}
+.scenario{background:var(--panel);border-left:4px solid var(--caller);padding:14px 18px;margin:0 0 28px;max-width:70ch}
+.scenario p{margin:0}
+.scenario q{font-style:italic}
+.grid{display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.controls{background:var(--panel);padding:18px 18px 8px}
+.controls h2,.readout h2{font-size:15px;font-weight:700;margin:0 0 12px;font-stretch:100%}
+fieldset{border:0;padding:0;margin:0 0 16px}
+legend{font-weight:600;font-size:14px;margin-bottom:6px;padding:0}
+.modes label{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:4px 0;cursor:pointer}
+.slider{margin:0 0 14px}
+.slider label{display:flex;justify-content:space-between;font-size:14px}
+.slider output{font-variant-numeric:tabular-nums;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--ink)}
+.toggle{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:0 0 16px;cursor:pointer}
+button{font:inherit;font-weight:600;border:2px solid var(--ink);background:var(--ink);color:var(--bg);padding:9px 16px;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.presets button{font-size:13px;padding:6px 10px}
+.stage{min-width:0}
+.chart{background:var(--panel);padding:14px 10px 6px;overflow-x:auto}
+svg{display:block;width:100%;min-width:640px;height:auto}
+.actions{display:flex;gap:10px;margin:14px 0 22px}
+.readout{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:2px solid var(--ink)}
+@media (max-width:620px){.readout{grid-template-columns:1fr}}
+.metric{padding:14px 16px 14px 0}
+.metric .v{font-size:30px;font-weight:800;font-stretch:118%;font-variant-numeric:tabular-nums;line-height:1.1}
+.metric .k{font-size:14px;color:var(--muted)}
+.verdict{margin-top:18px;padding:16px 18px;border:2px solid currentColor;font-weight:600;max-width:70ch}
+.verdict.bad{color:var(--bad)} .verdict.good{color:var(--good)} .verdict.warn{color:var(--agent)}
+.verdict span{display:block;font-weight:400;color:var(--ink);margin-top:4px}
+.notes{margin-top:40px;max-width:70ch;color:var(--muted);font-size:15px}
+.notes h2{color:var(--ink);font-size:18px;margin:0 0 8px}
+.notes p{margin:0 0 10px}
+@media (prefers-reduced-motion: reduce){#playhead{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Your voice agent is fast. Is it listening when the caller changes their mind?</h1>
+  <p class="lede">A small lab for one failure mode that latency dashboards hide: the caller corrects themselves, and the agent has already acted on the first sentence. Tune the pipeline, play the call, and see whether the transfer goes to the right account.</p>
+
+  <div class="scenario"><p>The caller says <q>Move two thousand dollars to savings</q>, pauses, then adds <q>wait, no, to checking.</q> The agent calls <b>initiate_transfer()</b> as soon as it thinks the turn is over.</p></div>
+
+  <div class="grid">
+    <form class="controls" onsubmit="return false" aria-label="Pipeline settings">
+      <h2>Pipeline</h2>
+      <div class="presets" role="group" aria-label="Presets">
+        <button type="button" class="ghost" data-preset="typical">Typical cascade</button>
+        <button type="button" class="ghost" data-preset="fast">Tuned for speed</button>
+        <button type="button" class="ghost" data-preset="duplex">Full-duplex + guard</button>
+      </div>
+      <fieldset class="modes">
+        <legend>How the agent listens</legend>
+        <label><input type="radio" name="mode" value="half"> Half-duplex: mic muted while the agent speaks</label>
+        <label><input type="radio" name="mode" value="cascade" checked> Cascade with barge-in detection</label>
+        <label><input type="radio" name="mode" value="duplex"> Full-duplex speech model</label>
+      </fieldset>
+      <div class="slider"><label for="corr">Caller corrects after <output id="corrO"></output></label><input id="corr" type="range" min="100" max="2500" step="50" value="900"></div>
+      <div class="slider"><label for="endp">End-of-turn silence wait <output id="endpO"></output></label><input id="endp" type="range" min="100" max="1500" step="50" value="500"></div>
+      <div class="slider"><label for="asr">Speech-to-text final <output id="asrO"></output></label><input id="asr" type="range" min="0" max="600" step="25" value="200"></div>
+      <div class="slider"><label for="llm">Model first token <output id="llmO"></output></label><input id="llm" type="range" min="100" max="1500" step="50" value="450"></div>
+      <div class="slider"><label for="tool">Transfer API commit <output id="toolO"></output></label><input id="tool" type="range" min="100" max="1500" step="50" value="400"></div>
+      <div class="slider"><label for="tts">Text-to-speech first audio <output id="ttsO"></output></label><input id="tts" type="range" min="50" max="800" step="25" value="250"></div>
+      <label class="toggle"><input id="guard" type="checkbox"> Stage money movement until the caller confirms (cancel on barge-in)</label>
+    </form>
+
+    <div class="stage">
+      <div class="chart"><svg id="svg" viewBox="0 0 760 300" role="img" aria-labelledby="svgT"><title id="svgT">Call timeline</title></svg></div>
+      <div class="actions">
+        <button type="button" id="play">Play call</button>
+        <button type="button" class="ghost" id="reset">Reset</button>
+      </div>
+      <div class="readout" aria-live="polite">
+        <div class="metric"><div class="v" id="mGap"></div><div class="k">Response gap (humans ≈ 200 ms)</div></div>
+        <div class="metric"><div class="v" id="mOver"></div><div class="k">Agent talking over caller</div></div>
+        <div class="metric"><div class="v" id="mDetect"></div><div class="k">Correction heard after</div></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>What the lab is modeling</h2>
+    <p>The end-of-turn silence wait is the real trade-off. Shorten it and the agent answers sooner, but it also commits to a sentence the caller had not finished. Lengthen it and callers feel the dead air.</p>
+    <p>Barge-in detection only helps with what the agent is saying. It does nothing about what the agent has already done. For read-only answers that is fine. For money movement, the tool call has to be staged and cancellable, or the fastest pipeline is also the one that sends funds to the wrong account.</p>
+    <p>Timings are illustrative, not vendor benchmarks. Built by Vasanth Natarajan as a thinking tool for enterprise voice AI teams.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const ids = ["corr","endp","asr","llm","tool","tts"];
+  const NET = 150, U1_END = 2000, U2_LEN = 1100, SPEAK = 2300, SPAN = 8000;
+  const X0 = 120, W = 620, lanes = ["Caller","Turn detection","Transcribe + reason","Transfer API","Agent voice"];
+  const x = t => X0 + Math.max(0, Math.min(SPAN, t)) / SPAN * W;
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  const presets = {
+    typical:{mode:"cascade",corr:900,endp:500,asr:200,llm:450,tool:400,tts:250,guard:false},
+    fast:{mode:"cascade",corr:900,endp:200,asr:100,llm:250,tool:250,tts:120,guard:false},
+    duplex:{mode:"duplex",corr:900,endp:250,asr:0,llm:350,tool:400,tts:100,guard:true}
+  };
+
+  function read(){
+    const v = {}; ids.forEach(i => v[i] = +$(i).value);
+    v.mode = document.querySelector('input[name=mode]:checked').value;
+    v.guard = $("guard").checked; return v;
+  }
+
+  function sim(v){
+    const r = {};
+    const endp = v.mode === "duplex" ? Math.min(v.endp, 300) : v.endp;
+    const asr = v.mode === "duplex" ? 0 : v.asr;
+    r.c = U1_END + v.corr;
+    r.heardAll = r.c < U1_END + endp;
+    const lastSpeech = r.heardAll ? r.c + U2_LEN : U1_END;
+    r.endpAt = lastSpeech + endp;
+    r.asrAt = r.endpAt + asr;
+    r.llmAt = r.asrAt + v.llm;
+    r.toolStart = r.llmAt;
+    r.toolEnd = r.llmAt + v.tool;
+    r.ttsStart = r.llmAt + v.tts + NET;
+    r.ttsEnd = r.ttsStart + SPEAK;
+    r.gap = r.ttsStart - lastSpeech;
+    if (r.heardAll){ r.detect = null; r.over = 0; r.outcome = "heard"; r.stopAt = r.ttsEnd; return r; }
+    const speakingAtC = r.c >= r.ttsStart && r.c < r.ttsEnd;
+    if (v.mode === "half") r.detect = speakingAtC ? r.ttsEnd + 300 : r.c + 300;
+    else if (v.mode === "cascade") r.detect = r.c + 300;
+    else r.detect = r.c + 150;
+    const cEnd = r.c + U2_LEN;
+    r.stopAt = (v.mode === "half") ? r.ttsEnd : Math.min(r.ttsEnd, Math.max(r.ttsStart, r.detect + 100));
+    const oStart = Math.max(r.c, r.ttsStart), oEnd = Math.min(cEnd, r.stopAt);
+    r.over = Math.max(0, oEnd - oStart);
+    if (v.guard) r.outcome = "staged";
+    else if (r.toolEnd <= r.detect) r.outcome = "committed";
+    else r.outcome = "lucky";
+    return r;
+  }
+
+  function el(tag, a, txt){ const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; }
+
+  function draw(v, r){
+    const s = $("svg"); s.innerHTML = ""; s.appendChild(el("title",{id:"svgT"},"Call timeline"));
+    const ink = css("--ink"), grid = css("--grid"), muted = css("--muted");
+    for (let t = 0; t <= SPAN; t += 1000){
+      s.appendChild(el("line",{x1:x(t),x2:x(t),y1:18,y2:262,stroke:grid,"stroke-width":1}));
+      s.appendChild(el("text",{x:x(t),y:282,"text-anchor":"middle","font-size":11,fill:muted},(t/1000)+" s"));
+    }
+    lanes.forEach((n,i) => s.appendChild(el("text",{x:0,y:44+i*48,"font-size":12,"font-weight":600,fill:ink},n)));
+    const bar = (lane, a, b, color, label, dash) => {
+      const y = 28 + lane*48;
+      s.appendChild(el("rect",{x:x(a),y,width:Math.max(3,x(b)-x(a)),height:24,fill:dash?"none":color,
+        stroke:color,"stroke-width":dash?2:0,"stroke-dasharray":dash?"5 4":"",opacity:dash?1:.9}));
+      if (label) s.appendChild(el("text",{x:x(a)+6,y:y+16,"font-size":11,"font-weight":600,fill:dash?color:"#fff"},label));
+    };
+    const cc = css("--caller"), ac = css("--agent"), th = css("--think"), bad = css("--bad"), good = css("--good");
+    bar(0, 0, U1_END, cc, "“…to savings”");
+    bar(0, r.c, r.c + U2_LEN, cc, "“wait, checking”");
+    s.appendChild(el("line",{x1:x(r.endpAt),x2:x(r.endpAt),y1:76,y2:100,stroke:ink,"stroke-width":3}));
+    s.appendChild(el("text",{x:x(r.endpAt)+6,y:92,"font-size":11,fill:ink},"turn ends"));
+    if (r.detect){
+      s.appendChild(el("line",{x1:x(r.detect),x2:x(r.detect),y1:76,y2:100,stroke:cc,"stroke-width":3}));
+      s.appendChild(el("text",{x:x(r.detect)+6,y:92,"font-size":11,fill:cc},"barge-in heard"));
+    }
+    bar(2, r.endpAt, r.llmAt, th, "");
+    const toolColor = r.outcome === "committed" ? bad : (r.outcome === "heard" ? good : ac);
+    const toolLabel = r.heardAll ? "→ checking" : (v.guard ? "staged: savings" : "→ savings");
+    bar(3, r.toolStart, r.toolEnd, toolColor, toolLabel, v.guard && !r.heardAll);
+    if (!r.heardAll && (v.guard || r.outcome === "lucky")){
+      const cx = x(Math.max(r.detect, r.toolStart)), y = 3*48+40;
+      s.appendChild(el("line",{x1:cx-7,y1:y-7,x2:cx+7,y2:y+7,stroke:good,"stroke-width":3}));
+      s.appendChild(el("line",{x1:cx-7,y1:y+7,x2:cx+7,y2:y-7,stroke:good,"stroke-width":3}));
+    }
+    bar(4, r.ttsStart, r.stopAt, ac, r.heardAll ? "“Moving it to checking”" : "“Moving it to savings…”");
+    if (r.over > 0){
+      const a = Math.max(r.c, r.ttsStart);
+      s.appendChild(el("rect",{x:x(a),y:22,width:x(a+r.over)-x(a),height:240,fill:bad,opacity:.12}));
+    }
+    s.appendChild(el("line",{id:"playhead",x1:X0,x2:X0,y1:14,y2:266,stroke:ink,"stroke-width":2,opacity:0}));
+  }
+
+  function report(v, r){
+    $("mGap").textContent = Math.round(r.gap) + " ms";
+    $("mOver").textContent = Math.round(r.over) + " ms";
+    $("mDetect").textContent = r.detect ? Math.round(r.detect - r.c) + " ms" : "n/a";
+    const V = $("verdict");
+    const map = {
+      heard:["good","Full intent captured. Transfer goes to checking.","The caller corrected inside the silence window, so the agent never committed. You paid for it in response gap."],
+      committed:["bad","Stale action committed. $2,000 went to savings.","The transfer API finished before the correction was heard. A faster voice would not have fixed this; the action was irreversible before the caller finished talking."],
+      lucky:["warn","Cancelled, but only by luck.","The correction landed before the API call finished. Nothing in the design guaranteed that; a faster backend turns this into a wrong transfer."],
+      staged:["good","Correction honored. Staged transfer cancelled.","Money movement waited for confirmation, so the barge-in cancelled a draft, not a transaction. Cost: one extra confirmation turn."]
+    };
+    const [cls, head, body] = map[r.outcome];
+    V.className = "verdict " + cls; V.innerHTML = ""; V.append(head);
+    const sp = document.createElement("span"); sp.textContent = body; V.append(sp);
+  }
+
+  function render(){
+    ids.forEach(i => $(i+"O").textContent = $(i).value + " ms");
+    const v = read(), r = sim(v); draw(v, r); report(v, r);
+  }
+
+  let raf = null;
+  function play(){
+    cancelAnimationFrame(raf);
+    const ph = document.getElementById("playhead"); if (!ph) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    ph.setAttribute("opacity", 1); const t0 = performance.now();
+    const step = now => { const t = (now - t0) * 1.4;
+      ph.setAttribute("x1", x(t)); ph.setAttribute("x2", x(t));
+      if (t < SPAN) raf = requestAnimationFrame(step); else ph.setAttribute("opacity", 0); };
+    raf = requestAnimationFrame(step);
+  }
+
+  function applyPreset(p){
+    ids.forEach(i => $(i).value = p[i]);
+    document.querySelector('input[name=mode][value="'+p.mode+'"]').checked = true;
+    $("guard").checked = p.guard; render();
+  }
+
+  document.querySelectorAll("input").forEach(i => i.addEventListener("input", render));
+  document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => applyPreset(presets[b.dataset.preset])));
+  $("play").addEventListener("click", play);
+  $("reset").addEventListener("click", () => applyPreset(presets.typical));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  applyPreset(presets.typical);
+})();
+</script>
+</body>
+</html>
